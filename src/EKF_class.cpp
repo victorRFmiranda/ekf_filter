@@ -398,7 +398,6 @@ void EKF_class::callback_pose(VectorXd pose){
     MatrixXd R_aux(6,6);
     R_aux = R.block(0,0,6,6);
 
-
     //cout << "bias = " << states.block(9,0,6,1).transpose() << endl;
 
     // Compute Inovation
@@ -418,7 +417,6 @@ void EKF_class::callback_pose(VectorXd pose){
 
     // Actualization of covariance matrix
     P = (MatrixXd::Identity(N_STATES,N_STATES) - K*H_aux)*P;
-
 }
 
 
