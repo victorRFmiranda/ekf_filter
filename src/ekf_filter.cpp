@@ -34,10 +34,10 @@ using namespace std;
 #define N_STATES 15
 bool enable_txt_log;
 Eigen::VectorXd EKF_states_0(N_STATES);
-Eigen::MatrixXd EKF_H(6,N_STATES);
+Eigen::MatrixXd EKF_H(9,N_STATES);
 Eigen::MatrixXd EKF_Q(N_STATES,N_STATES);
 Eigen::MatrixXd EKF_Q_bar(6,6);
-Eigen::MatrixXd EKF_R(6,6);
+Eigen::MatrixXd EKF_R(9,9);
 Eigen::MatrixXd EKF_P(N_STATES,N_STATES);
 
 // vehicle number
@@ -47,14 +47,17 @@ std::string vehicle_number;
 //Counters for decimation
 int count_imu = 0;
 int count_gps = 0;
+int count_encoder = 0;
 
 
 //Flags for new measured data
-bool new_u_imu = false; //imu
-bool new_z_gps = false; //GPS
+bool new_u_imu = false;     //imu
+bool new_z_gps = false;     //GPS
+bool new_z_orient = false;  //Orientation (IMU)
+bool new_z_vel = false;     //Encoder
 
 //Variables to transform quaternion <-> Euler
-Eigen::VectorXd pos_euler(6,1);
+Eigen::VectorXd pos_euler(3,1);
 Eigen::VectorXd pos_quat(7,1);
 
 //Flag for initialization
@@ -63,7 +66,8 @@ bool filter_init = false;
 //Variables to store new received data
 Eigen::VectorXd u_imu(10,1);
 Eigen::VectorXd orientation_imu(4,1);
-Eigen::VectorXd z_gps(7,1);
+Eigen::VectorXd vel_encoder(3,1);
+Eigen::VectorXd z_gps(3,1);
 
 
 // callbacks for IMU data
@@ -77,8 +81,23 @@ void imu_callback(const sensor_msgs::Imu::ConstPtr& msg){
     orientation_imu << msg->orientation.w, msg->orientation.x, msg->orientation.y, msg->orientation.z;
 
     new_u_imu = true;
+    new_z_orient = true;
   }  
 
+}
+
+// callback Encoder
+void encoder_callback(const nav_msgs::Odometry::ConstPtr& msg){
+
+  if (msg->header.frame_id == (("vehicle_")+vehicle_number)){
+    Eigen::VectorXd new_vel(3,1);
+    double alpha = 0.3;
+
+    //Get vel
+    vel_encoder << msg->twist.twist.linear.x, msg->twist.twist.linear.y, msg->twist.twist.linear.z;
+
+    new_z_vel = true;
+  }
 }
 
 
@@ -86,17 +105,13 @@ void imu_callback(const sensor_msgs::Imu::ConstPtr& msg){
 void gps_callback(const nav_msgs::Odometry::ConstPtr& msg){
 
   if (msg->header.frame_id == (("gps_link_")+vehicle_number)){
-    Eigen::VectorXd new_gps(7,1);
+    Eigen::VectorXd new_gps(3,1);
     double alpha = 0.3;
 
     filter_init = true;//TEMPORARY!!!!!!!!!!!!!!!
 
     //Get position
-    z_gps.block(0,0,3,1) << msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z;
-
-    //Get orientation
-    z_gps.block(3,0,4,1) = orientation_imu;
-    // z_gps.block(3,0,4,1) << msg->pose.pose.orientation.w, msg->pose.pose.orientation.x, msg->pose.pose.orientation.y, msg->pose.pose.orientation.z;
+    z_gps << msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z;
 
     new_z_gps = true;
   }
@@ -118,7 +133,7 @@ void load_EKF_parameters(ros::NodeHandle nh){
     EKF_states_0 = VectorXd::Map(temp_vector.data(), temp_vector.size());
 
     nh.getParam("/EKF/H", temp_vector);
-    EKF_H = Eigen::Map<Eigen::Matrix<double, N_STATES, 6> >(temp_vector.data()).transpose();
+    EKF_H = Eigen::Map<Eigen::Matrix<double, N_STATES, 9> >(temp_vector.data()).transpose();
 
     nh.getParam("/EKF/Q", temp_vector);
     EKF_Q = Eigen::Map<Eigen::Matrix<double, N_STATES, N_STATES> >(temp_vector.data()).transpose();
@@ -127,7 +142,7 @@ void load_EKF_parameters(ros::NodeHandle nh){
     EKF_Q_bar = Eigen::Map<Eigen::Matrix<double, 6, 6> >(temp_vector.data()).transpose();
 
     nh.getParam("/EKF/R", temp_vector);
-    EKF_R = Eigen::Map<Eigen::Matrix<double, 6, 6> >(temp_vector.data()).transpose();
+    EKF_R = Eigen::Map<Eigen::Matrix<double, 9, 9> >(temp_vector.data()).transpose();
 
     nh.getParam("/EKF/P", temp_vector);
     EKF_P = Eigen::Map<Eigen::Matrix<double, N_STATES, N_STATES> >(temp_vector.data()).transpose();
@@ -141,6 +156,7 @@ void load_EKF_parameters(ros::NodeHandle nh){
     cout << "\33[92mEKF_Q_bar:\n" << EKF_Q_bar << "\33[0m" << endl << endl;
     cout << "\33[92mEKF_R:\n" << EKF_R << "\33[0m" << endl << endl;
     cout << "\33[92mEKF_P:\n" << EKF_P << "\33[0m" << endl << endl;
+    cout << "\33[92mVehicle Number:\t"<<vehicle_number<<"\33[0m"<<endl<<endl;
 
 
   }catch(...){
@@ -171,6 +187,8 @@ int main(int argc, char *argv[]){
 	// Callbacks
   ros::Subscriber sub_imu = n.subscribe("/imu_data", 1, &imu_callback);
   ros::Subscriber sub_gps = n.subscribe("/gps", 1, &gps_callback);
+  ros::Subscriber sub_encoder = n.subscribe("/odom", 1, &encoder_callback);
+
 
   // Publishers
   ros::Publisher ekf_pub = n.advertise<nav_msgs::Odometry>("/ekf_odom", 1);
@@ -183,6 +201,7 @@ int main(int argc, char *argv[]){
 	double dt = 0.0;
 	int imu_step = 1; // decimate imu data
 	int gps_step = 1; // decimate beacons ddata
+  int vel_step = 1;
 	Eigen::Matrix3d R;
 	Eigen::Vector3d velo_w;
   double t_current = ros::Time::now().toSec();
@@ -253,10 +272,8 @@ int main(int argc, char *argv[]){
         //Update the IMU data in the filter object
         double Ts = dt;
         Filter->callback_imu(u_imu.block(3,0,3,1), u_imu.block(0,0,3,1), Ts); //(gyro,accel)
-
         //Perform a prediction step in the filter
         Filter->prediction();
-
         // Get the current states of the filter
         ekf_states = Filter->get_states();
 
@@ -268,6 +285,14 @@ int main(int argc, char *argv[]){
         cout << "\33[99mvel_World:" << velo_w.transpose() << "\33[0m" << endl;
         cout << endl;
 #endif
+
+
+    // ===========================================
+    // Update filter with information from Orinetaion (IMU)
+    // ===========================================
+
+        //Call the update for Orientation
+        Filter->callback_orientation(orientation_imu);
 
       }
     }
@@ -286,12 +311,30 @@ int main(int argc, char *argv[]){
 
         if (filter_init==true){
 
-          //Transform pose with quaternion to pose with Euler angle
-          pos_euler.block(0,0,3,1) = z_gps.block(0,0,3,1);
-          pos_euler.block(3,0,3,1) = Filter->quat2eulerangle(z_gps.block(3,0,4,1));
+          //Call the update
+          Filter->callback_position(z_gps);
+
+
+        }
+      }
+    }
+
+
+    // ===========================================
+    // Update filter with information from Encoder
+    // ===========================================
+    if(new_z_vel == true){
+      new_z_vel = false;
+      count_encoder++;
+
+      if (count_encoder == vel_step){
+        count_encoder = 0;
+
+        if (filter_init==true){
 
           //Call the update
-          Filter->callback_pose(pos_euler);
+          Filter->callback_velocity(vel_encoder);
+
 
         }
       }

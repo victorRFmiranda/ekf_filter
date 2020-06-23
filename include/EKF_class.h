@@ -9,7 +9,7 @@ class EKF_class{
   private:
     // States (15) and IMU (6) Data
     VectorXd states, imu_data;
-    // Pose Measurement (6)
+    // Pose Measurement (3)
     VectorXd read_pose;
     // Time stamp
     double dt;
@@ -43,8 +43,10 @@ class EKF_class{
     // Prediction Step
     void prediction();
 
-    // Actualization Pose measu (pose)
-    void callback_pose(VectorXd);
+    // Actualization position measu (position)
+    void callback_position(VectorXd);
+    // Actualization orientation measu (position)
+    void callback_orientation(VectorXd);
     // Actualization Vel measu (velocity)
     void callback_velocity(VectorXd);
     // Actualization RangeFinder

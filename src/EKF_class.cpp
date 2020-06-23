@@ -72,11 +72,11 @@ EKF_class::EKF_class(VectorXd initial_pos, double Frequency){
   // IMU covariance
   Q_bar = MatrixXd::Zero(6,6);
   Q_bar << 0.2, 0.0, 0.0, 0.0, 0.0, 0.0,
-  		   0.0, 0.2, 0.0, 0.0, 0.0, 0.0,
-  		   0.0, 0.0, 0.2, 0.0, 0.0, 0.0,
-  		   0.0, 0.0, 0.0, 2.0, 0.0, 0.0,
-  		   0.0, 0.0, 0.0, 0.0, 2.0, 0.0,
-  		   0.0, 0.0, 0.0, 0.0, 0.0, 2.0;
+         0.0, 0.2, 0.0, 0.0, 0.0, 0.0,
+         0.0, 0.0, 0.2, 0.0, 0.0, 0.0,
+         0.0, 0.0, 0.0, 2.0, 0.0, 0.0,
+         0.0, 0.0, 0.0, 0.0, 2.0, 0.0,
+         0.0, 0.0, 0.0, 0.0, 0.0, 2.0;
 
   // Measurement Covariance
   R = MatrixXd::Zero(9,9);
@@ -172,8 +172,8 @@ void EKF_class::callback_imu(VectorXd gyro_read, VectorXd acc_read, double Ts){
 // Range Finder
 void EKF_class::callback_rangeF(double range_finder){
 
-	double alpha = 0.2;
-	rangeF_data = (1.0-alpha)*rangeF_data + alpha*range_finder;
+  double alpha = 0.2;
+  rangeF_data = (1.0-alpha)*rangeF_data + alpha*range_finder;
 }
 
 
@@ -275,8 +275,8 @@ VectorXd EKF_class::discrete_model(VectorXd x, VectorXd u, double dt){
   psi = x(5);
 
   R_bw << (cos(theta)*cos(psi)), (sin(phi)*sin(theta)*cos(psi)-cos(phi)*sin(psi)), (cos(phi)*sin(theta)*cos(psi)+sin(phi)*sin(psi)),
-					(cos(theta)*sin(psi)), (sin(phi)*sin(theta)*sin(psi)+cos(phi)*cos(psi)), (cos(phi)*sin(theta)*sin(psi)-sin(phi)*cos(psi)),
-					(-sin(theta)), (sin(phi)*cos(theta)), (cos(phi)*cos(theta));
+          (cos(theta)*sin(psi)), (sin(phi)*sin(theta)*sin(psi)+cos(phi)*cos(psi)), (cos(phi)*sin(theta)*sin(psi)-sin(phi)*cos(psi)),
+          (-sin(theta)), (sin(phi)*cos(theta)), (cos(phi)*cos(theta));
 
   // Create the Jacobian of transformation
   MatrixXd JT(3,3);
@@ -340,9 +340,6 @@ void EKF_class::prediction(){
 
 
 
-
-
-
 // EKF UPDATE - Z pose
 void EKF_class::callback_High(){
 
@@ -351,7 +348,7 @@ void EKF_class::callback_High(){
     H_aux << 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
     H_aux(2) = 1.0/(cos(states(3))*cos(states(4)));
     H_aux(3) = -(states(2)/cos(states(4)))*log(cos(states(3)))*sin(states(3));
-	  H_aux(4) = -(states(2)/cos(states(3)))*log(cos(states(4)))*sin(states(4));
+    H_aux(4) = -(states(2)/cos(states(3)))*log(cos(states(4)))*sin(states(4));
 
     //Covariance of the measurement only for pose
     double R_aux = 0.1;
@@ -384,31 +381,65 @@ void EKF_class::callback_High(){
 
 
 
-// EKF UPDATE - POSE
-void EKF_class::callback_pose(VectorXd pose){
+// EKF UPDATE - Position
+void EKF_class::callback_position(VectorXd pose){
     // Measurements
     read_pose = pose;
 
     //Measurement model only for pose
-    MatrixXd H_aux(6,N_STATES);
-    H_aux = H.block(0,0,6,N_STATES);
+    MatrixXd H_aux(3,N_STATES);
+    H_aux = H.block(0,0,3,N_STATES);
 
     //Covariance of the measurement only for pose
     // MatrixXd R_aux(6,N_STATES);
-    MatrixXd R_aux(6,6);
-    R_aux = R.block(0,0,6,6);
+    MatrixXd R_aux(3,3);
+    R_aux = R.block(0,0,3,3);
 
     //cout << "bias = " << states.block(9,0,6,1).transpose() << endl;
 
     // Compute Inovation
-    VectorXd inovation(6);
+    VectorXd inovation(3);
     inovation = read_pose - H_aux*states;
-    inovation(3) = sin(inovation(3));
-    inovation(4) = sin(inovation(4));
-    inovation(5) = sin(inovation(5));
 
     // Compute Kalman Gain
-    MatrixXd S(6,6);
+    MatrixXd S(3,3);
+    S = H_aux*P*H_aux.transpose() + R_aux;
+    K = P*H_aux.transpose()*S.inverse();
+
+    // Actualization of the states
+    states = states + K*inovation;
+
+    // Actualization of covariance matrix
+    P = (MatrixXd::Identity(N_STATES,N_STATES) - K*H_aux)*P;
+}
+
+
+// EKF UPDATE - ORIENTATION
+void EKF_class::callback_orientation(VectorXd orient){
+    // Measurements
+    VectorXd read_orientation(3);
+    read_orientation = quat2eulerangle(orient);
+
+    //Measurement model only for pose
+    MatrixXd H_aux(3,N_STATES);
+    H_aux = H.block(3,0,3,N_STATES);
+
+    //Covariance of the measurement only for pose
+    // MatrixXd R_aux(6,N_STATES);
+    MatrixXd R_aux(3,3);
+    R_aux = R.block(3,3,3,3);
+
+    //cout << "bias = " << states.block(9,0,6,1).transpose() << endl;
+
+    // Compute Inovation
+    VectorXd inovation(3);
+    inovation = read_orientation - H_aux*states;
+    inovation(0) = sin(inovation(0));
+    inovation(1) = sin(inovation(1));
+    inovation(2) = sin(inovation(2));
+
+    // Compute Kalman Gain
+    MatrixXd S(3,3);
     S = H_aux*P*H_aux.transpose() + R_aux;
     K = P*H_aux.transpose()*S.inverse();
 
@@ -425,8 +456,8 @@ void EKF_class::callback_pose(VectorXd pose){
 void EKF_class::callback_velocity(VectorXd body_vel){
 
     // Rotation to World Frame
-	VectorXd vel_world(3);
-	vel_world = body_vel;
+    VectorXd vel_world(3);
+    vel_world = body_vel;
 
 
     //Measurement model only for velocity
@@ -437,8 +468,6 @@ void EKF_class::callback_velocity(VectorXd body_vel){
     // MatrixXd R_aux(6,15);
     MatrixXd R_aux(3,3);
     R_aux = R.block(6,6,3,3);
-
-
 
 
     // Compute Inovation
@@ -473,9 +502,9 @@ EKF_class::~EKF_class(){
 VectorXd EKF_class::EulertoQuaternion( VectorXd rpy) // yaw (Z), pitch (Y), roll (X)
 {
 
-	double roll = rpy(0);
-	double pitch = rpy(1);
-	double yaw = rpy(2);
+  double roll = rpy(0);
+  double pitch = rpy(1);
+  double yaw = rpy(2);
 
     // Abbreviations for the various angular functions
     double cy = cos(yaw * 0.5);
@@ -532,27 +561,27 @@ VectorXd EKF_class::rotm2angle( MatrixXd Rot)
 
 // Unit Quaternion to Euler angle
 VectorXd EKF_class::quat2eulerangle(VectorXd q){
-	// w x y z
+  // w x y z
 
    VectorXd angle(3,1);
    angle.setZero();
 
    // roll (x-axis rotation)
-	double sinr_cosp = +2.0 * (q[0] * q[1] + q[2] * q[3]);
-	double cosr_cosp = +1.0 - 2.0 * (q[1] * q[1] + q[2] * q[2]);
-	angle[0] = atan2(sinr_cosp, cosr_cosp);
+  double sinr_cosp = +2.0 * (q[0] * q[1] + q[2] * q[3]);
+  double cosr_cosp = +1.0 - 2.0 * (q[1] * q[1] + q[2] * q[2]);
+  angle[0] = atan2(sinr_cosp, cosr_cosp);
 
-	// pitch (y-axis rotation)
-	double sinp = +2.0 * (q[0] * q[2] - q[3] * q[1]);
-	if (fabs(sinp) >= 1)
-		angle[1] = copysign(M_PI / 2, sinp); // use 90 degrees if out of range
-	else
-		angle[1] = asin(sinp);
+  // pitch (y-axis rotation)
+  double sinp = +2.0 * (q[0] * q[2] - q[3] * q[1]);
+  if (fabs(sinp) >= 1)
+    angle[1] = copysign(M_PI / 2, sinp); // use 90 degrees if out of range
+  else
+    angle[1] = asin(sinp);
 
-	// yaw (z-axis rotation)
-	double siny_cosp = +2.0 * (q[0] * q[3] + q[1] * q[2]);
-	double cosy_cosp = +1.0 - 2.0 * (q[2] * q[2] + q[3] * q[3]);
-	angle[2] = atan2(siny_cosp, cosy_cosp);
+  // yaw (z-axis rotation)
+  double siny_cosp = +2.0 * (q[0] * q[3] + q[1] * q[2]);
+  double cosy_cosp = +1.0 - 2.0 * (q[2] * q[2] + q[3] * q[3]);
+  angle[2] = atan2(siny_cosp, cosy_cosp);
 
    return angle;
 }
