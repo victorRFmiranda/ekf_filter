@@ -1,4 +1,4 @@
-#include "EKF_class.h"
+#include "EKF_class_V2.h"
 
 #define PI 3.1415926535
 
@@ -6,13 +6,13 @@ using namespace std;
 using namespace Eigen;
 
 // States
-// x, y, z
+// x, y
 // roll, pitch, yaw
-// vx, vy, vz (body)
+// vx, vy, (body)
 // bgx, bgy, bgz (bias imu gyro)
 // bax, bay, baz (bias imu accelerometer)
 
-#define N_STATES 15
+#define N_STATES 13
 
 // constructor 2
 EKF_class::EKF_class(VectorXd states_0, double Frequency, MatrixXd H_, MatrixXd Q_, MatrixXd Q_bar_, MatrixXd R_, MatrixXd P_){
@@ -58,8 +58,8 @@ void EKF_class::callback_imu(VectorXd gyro_read, VectorXd acc_read, double Ts){
   dt = Ts;
 
   // Low-pass filter
-  double alpha = 0.6;  //We can make alpha be a function of Ts
-  double beta = 0.6;  //We can make alpha be a function of Ts
+  double alpha = 0.5;  //We can make alpha be a function of Ts
+  double beta = 0.5;  //We can make alpha be a function of Ts
   imu_data.block(0,0,3,1) = (1.0-beta)*imu_data.block(0,0,3,1) + beta*gyro_read;
   imu_data.block(3,0,3,1) = (1.0-alpha)*imu_data.block(3,0,3,1) + alpha*acc_read;
 }
@@ -99,9 +99,9 @@ MatrixXd EKF_class::Jacobian_F(VectorXd x, VectorXd u, double dt){
         state_plus(k) = state_plus(k) + delta;
         f1 = discrete_model(state_plus, imu_now, dt);
         state_diff = f1-f0;
+        state_diff(2) = sin(state_diff(2));
         state_diff(3) = sin(state_diff(3));
         state_diff(4) = sin(state_diff(4));
-        state_diff(5) = sin(state_diff(5));
         F.block(0,k,N_STATES,1) = state_diff/delta;
     }
 
@@ -134,9 +134,9 @@ MatrixXd EKF_class::Jacobian_G(VectorXd x, VectorXd u, double dt){
        imu_plus(k) = imu_plus(k) + delta;
        f1 = discrete_model(state_now, imu_plus, dt);
        state_diff = f1-f0;
+       state_diff(2) = sin(state_diff(2));
        state_diff(3) = sin(state_diff(3));
        state_diff(4) = sin(state_diff(4));
-       state_diff(5) = sin(state_diff(5));
        G.block(0,k,N_STATES,1) = state_diff/delta;
    }
 
@@ -155,7 +155,8 @@ VectorXd EKF_class::discrete_model(VectorXd x, VectorXd u, double dt){
 
   // Remove bias of imu, create new variable
   VectorXd u_imu(6);
-  u_imu = u - x.block(9,0,6,1);
+  u_imu = u - x.block(7,0,6,1);
+
 
   // Create a skew_symmetric_matrix of angular velocities
   MatrixXd S_omega(3,3);
@@ -163,36 +164,22 @@ VectorXd EKF_class::discrete_model(VectorXd x, VectorXd u, double dt){
              u_imu(2), 0.0, -u_imu(0),
              -u_imu(1), u_imu(0), 0.0;
 
-  // Create a rotation matrix from body frame to world
-  MatrixXd R_bw(3,3);
-  double phi, theta, psi;
-  phi = x(3);
-  theta = x(4);
-  psi = x(5);
-
-  R_bw << (cos(theta)*cos(psi)), (sin(phi)*sin(theta)*cos(psi)-cos(phi)*sin(psi)), (cos(phi)*sin(theta)*cos(psi)+sin(phi)*sin(psi)),
-          (cos(theta)*sin(psi)), (sin(phi)*sin(theta)*sin(psi)+cos(phi)*cos(psi)), (cos(phi)*sin(theta)*sin(psi)-sin(phi)*cos(psi)),
-          (-sin(theta)), (sin(phi)*cos(theta)), (cos(phi)*cos(theta));
-
-  // Create the Jacobian of transformation
-  MatrixXd JT(3,3);
-  JT << 1.0, sin(phi)*tan(theta), cos(phi)*tan(theta),
-        0.0, cos(phi), -sin(phi),
-        0.0, sin(phi)/cos(theta), cos(phi)/cos(theta);
-  
-
-  // Gravity vector
-  Vector3d g_vec;
-  g_vec << 0.0, 0.0, -9.81;
 
   // Position
-  f.block(0,0,3,1) = x.block(0,0,3,1) + ( R_bw*x.block(6,0,3,1) )*dt;
+  f(0) = x(0) + (x(5)*cos(x(4)))*dt;
+  f(1) = x(1) + (x(5)*sin(x(4)))*dt;
   // Orientation
-  f.block(3,0,3,1) = x.block(3,0,3,1) + ( JT*u_imu.block(0,0,3,1) )*dt;
+  f.block(2,0,3,1) = x.block(2,0,3,1) + ( u_imu.block(0,0,3,1) )*dt;
   // Velocities
-  f.block(6,0,3,1) = x.block(6,0,3,1) + ( u_imu.block(3,0,3,1) - S_omega*x.block(6,0,3,1) + R_bw.transpose()*g_vec )*dt;
+  // VectorXd v_aux(3), colioris(3);
+  // v_aux << x(5), x(6), 0.0;
+  // colioris = S_omega*v_aux;
+
+  // f.block(5,0,2,1) = x.block(5,0,2,1) + ( u_imu.block(3,0,2,1) - colioris.block(0,0,2,1))*dt;
+  f(5) = x(5) + u_imu(3)*dt;
+  f(6) = x(6) + u_imu(4)*dt;
   // Bias
-  f.block(9,0,6,1) = x.block(9,0,6,1);
+  f.block(7,0,6,1) = x.block(7,0,6,1);
 
   return f;
 
@@ -232,8 +219,16 @@ void EKF_class::prediction(){
   P = F*P*F.transpose() + Q;
 
 
-}
+  // //Avoid loops in the angle coordinate
+  // if(states(2)>PI){
+  //   states(2) = states(2)-2*PI;
+  // }
+  // if(states(2)<-PI){
+  //   states(2) = states(2)+2*PI;
+  // }
 
+
+}
 
 
 
@@ -243,22 +238,22 @@ void EKF_class::callback_position(VectorXd pose){
     read_pose = pose;
 
     //Measurement model only for pose
-    MatrixXd H_aux(3,N_STATES);
-    H_aux = H.block(0,0,3,N_STATES);
+    MatrixXd H_aux(2,N_STATES);
+    H_aux = H.block(0,0,2,N_STATES);
 
     //Covariance of the measurement only for pose
     // MatrixXd R_aux(6,N_STATES);
-    MatrixXd R_aux(3,3);
-    R_aux = R.block(0,0,3,3);
+    MatrixXd R_aux(2,2);
+    R_aux = R.block(0,0,2,2);
 
     //cout << "bias = " << states.block(9,0,6,1).transpose() << endl;
 
     // Compute Inovation
-    VectorXd inovation(3);
+    VectorXd inovation(2);
     inovation = read_pose - H_aux*states;
 
     // Compute Kalman Gain
-    MatrixXd S(3,3);
+    MatrixXd S(2,2);
     S = H_aux*P*H_aux.transpose() + R_aux;
     K = P*H_aux.transpose()*S.inverse();
 
@@ -278,12 +273,12 @@ void EKF_class::callback_orientation(VectorXd orient){
 
     //Measurement model only for pose
     MatrixXd H_aux(3,N_STATES);
-    H_aux = H.block(3,0,3,N_STATES);
+    H_aux = H.block(2,0,3,N_STATES);
 
     //Covariance of the measurement only for pose
     // MatrixXd R_aux(6,N_STATES);
     MatrixXd R_aux(3,3);
-    R_aux = R.block(3,3,3,3);
+    R_aux = R.block(2,2,3,3);
 
     //cout << "bias = " << states.block(9,0,6,1).transpose() << endl;
 
@@ -312,26 +307,26 @@ void EKF_class::callback_orientation(VectorXd orient){
 void EKF_class::callback_velocity(VectorXd body_vel){
 
     // Rotation to World Frame
-    VectorXd vel_world(3);
+    VectorXd vel_world(2);
     vel_world = body_vel;
 
 
     //Measurement model only for velocity
-    MatrixXd H_aux(3,N_STATES);
-    H_aux = H.block(6,0,3,N_STATES);
+    MatrixXd H_aux(2,N_STATES);
+    H_aux = H.block(5,0,2,N_STATES);
 
     //Covariance of the measurement only for velocity
     // MatrixXd R_aux(6,15);
-    MatrixXd R_aux(3,3);
-    R_aux = R.block(6,6,3,3);
+    MatrixXd R_aux(2,2);
+    R_aux = R.block(5,5,2,2);
 
 
     // Compute Inovation
-    VectorXd inovation(3);
+    VectorXd inovation(2);
     inovation = vel_world - H_aux*states;
 
     // Compute Kalman Gain
-    MatrixXd S(3,3);
+    MatrixXd S(2,2);
     S = H_aux*P*H_aux.transpose() + R_aux;
     K = P*H_aux.transpose()*S.inverse();
 
@@ -446,9 +441,11 @@ VectorXd EKF_class::quat2eulerangle(VectorXd q){
 VectorXd EKF_class::get_states(){
 
   Eigen::VectorXd states_return(10);
-  states_return.block(0,0,3,1) = states.block(0,0,3,1);
-  states_return.block(3,0,4,1) = EKF_class::EulertoQuaternion(states.block(3,0,3,1));
-  states_return.block(7,0,3,1) = states.block(6,0,3,1);
+  states_return.block(0,0,2,1) = states.block(0,0,2,1);
+  states_return(2) = 0.0;
+  states_return.block(3,0,4,1) = EKF_class::EulertoQuaternion(states.block(2,0,3,1));
+  states_return.block(7,0,2,1) = states.block(5,0,2,1);
+  states_return(9) = 0.0;
 
 
   return states_return;

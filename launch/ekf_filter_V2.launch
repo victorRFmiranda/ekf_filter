@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+
+<launch>
+
+
+  <arg name="number" default="master" />
+
+  <!--Run the EKF filter-->
+  <node pkg = "ekf_filter" name = "EKF" type = "ekf_filter_V2" args="$(arg number)" output="screen">
+	<param name="log_path" type="string" value="$(find ekf_filter)/log_files/" />
+	<rosparam command="load" file="$(find ekf_filter)/config/EKF_params_V2.yaml" />
+</node>
+
+
+
+
+
+
+</launch>

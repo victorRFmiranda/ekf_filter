@@ -23,7 +23,7 @@
 
 
 // EKF lib
-#include "EKF_class.h"
+#include "EKF_class_V2.h"
 
 
 
@@ -31,13 +31,13 @@ using namespace std;
 
 // Global variables
 #define PRINT_STATES 1
-#define N_STATES 15
+#define N_STATES 13
 bool enable_txt_log;
 Eigen::VectorXd EKF_states_0(N_STATES);
-Eigen::MatrixXd EKF_H(9,N_STATES);
+Eigen::MatrixXd EKF_H(7,N_STATES);
 Eigen::MatrixXd EKF_Q(N_STATES,N_STATES);
 Eigen::MatrixXd EKF_Q_bar(6,6);
-Eigen::MatrixXd EKF_R(9,9);
+Eigen::MatrixXd EKF_R(7,7);
 Eigen::MatrixXd EKF_P(N_STATES,N_STATES);
 
 // vehicle number
@@ -103,7 +103,7 @@ void GT_callback(const tf2_msgs::TFMessage::ConstPtr &msg){
 void imu_callback(const sensor_msgs::Imu::ConstPtr& msg){
 
   if (msg->header.frame_id == (("imu_link_")+vehicle_number)){
-    u_imu << -msg->linear_acceleration.x, -msg->linear_acceleration.y, -msg->linear_acceleration.z,
+    u_imu << msg->linear_acceleration.x, msg->linear_acceleration.y, msg->linear_acceleration.z,
          1*msg->angular_velocity.x, 1*msg->angular_velocity.y, 1*msg->angular_velocity.z,
          msg->orientation.w, msg->orientation.x, msg->orientation.y, msg->orientation.z;
 
@@ -161,7 +161,7 @@ void load_EKF_parameters(ros::NodeHandle nh){
     EKF_states_0 = VectorXd::Map(temp_vector.data(), temp_vector.size());
 
     nh.getParam("/EKF/H", temp_vector);
-    EKF_H = Eigen::Map<Eigen::Matrix<double, N_STATES, 9> >(temp_vector.data()).transpose();
+    EKF_H = Eigen::Map<Eigen::Matrix<double, N_STATES, 7> >(temp_vector.data()).transpose();
 
     nh.getParam("/EKF/Q", temp_vector);
     EKF_Q = Eigen::Map<Eigen::Matrix<double, N_STATES, N_STATES> >(temp_vector.data()).transpose();
@@ -170,7 +170,7 @@ void load_EKF_parameters(ros::NodeHandle nh){
     EKF_Q_bar = Eigen::Map<Eigen::Matrix<double, 6, 6> >(temp_vector.data()).transpose();
 
     nh.getParam("/EKF/R", temp_vector);
-    EKF_R = Eigen::Map<Eigen::Matrix<double, 9, 9> >(temp_vector.data()).transpose();
+    EKF_R = Eigen::Map<Eigen::Matrix<double, 7, 7> >(temp_vector.data()).transpose();
 
     nh.getParam("/EKF/P", temp_vector);
     EKF_P = Eigen::Map<Eigen::Matrix<double, N_STATES, N_STATES> >(temp_vector.data()).transpose();
@@ -204,15 +204,15 @@ int main(int argc, char *argv[]){
   vehicle_number = argv[1];
 
 
-  //Initialize node
-  ros::init(argc, argv, "ekf_filter");
+	//Initialize node
+	ros::init(argc, argv, "ekf_filter");
 
-  // Get handle
-  ros::NodeHandle n;
-  // Handle for getting parameters
-  ros::NodeHandle n2("ekf_filter");
+	// Get handle
+	ros::NodeHandle n;
+	// Handle for getting parameters
+	ros::NodeHandle n2("ekf_filter");
 
-  // Callbacks
+	// Callbacks
   ros::Subscriber sub_imu = n.subscribe("/imu_data", 1, &imu_callback);
   ros::Subscriber sub_gps = n.subscribe("/gps", 1, &gps_callback);
   ros::Subscriber sub_encoder = n.subscribe("/odom", 1, &encoder_callback);
@@ -227,28 +227,28 @@ int main(int argc, char *argv[]){
 
 
     // Initialize more variables
-  double dt = 0.0;
+	double dt = 0.0;
   double t_init = ros::Time::now().toSec();
   double time_log = 0.0;
-  int imu_step = 1; // decimate imu data
-  int gps_step = 1; // decimate beacons ddata
+	int imu_step = 1; // decimate imu data
+	int gps_step = 1; // decimate beacons ddata
   int vel_step = 1;
-  Eigen::Matrix3d R;
-  Eigen::Vector3d velo_w;
+	Eigen::Matrix3d R;
+	Eigen::Vector3d velo_w;
   double t_current = ros::Time::now().toSec();
   double t_previous = ros::Time::now().toSec();
 
 
-  //Read parameters of the EKF filter
+	//Read parameters of the EKF filter
   load_EKF_parameters(n2);
 
 
-  // EKF filter object
-  double frequency = 50.0;
-  EKF_class *Filter;
-  Filter = new EKF_class(EKF_states_0, frequency, EKF_H, EKF_Q, EKF_Q_bar, EKF_R, EKF_P);
-  Eigen::VectorXd ekf_states(N_STATES);
-  //Local states variable
+	// EKF filter object
+	double frequency = 50.0;
+	EKF_class *Filter;
+	Filter = new EKF_class(EKF_states_0, frequency, EKF_H, EKF_Q, EKF_Q_bar, EKF_R, EKF_P);
+	Eigen::VectorXd ekf_states(N_STATES);
+	//Local states variable
   ekf_states.setZero();
 
   //Define frequency
@@ -264,34 +264,34 @@ int main(int argc, char *argv[]){
   FILE *encoder_log;
 
   if(enable_txt_log){
-    std::string log_path;
-    std::string log_path_1;
-    std::string log_path_2;
-    std::string log_path_3;
+  	std::string log_path;
+  	std::string log_path_1;
+  	std::string log_path_2;
+  	std::string log_path_3;
     std::string log_path_4;
     std::string log_path_5;
-    if (n2.getParam ("/EKF/log_path", log_path)){
-      log_path_1 = log_path+"state_log.txt";
-      log_path_2 = log_path+"imu_log.txt";
-      log_path_3 = log_path+"gps_log.txt";
+  	if (n2.getParam ("/EKF/log_path", log_path)){
+  		log_path_1 = log_path+"state_log.txt";
+  		log_path_2 = log_path+"imu_log.txt";
+  		log_path_3 = log_path+"gps_log.txt";
       log_path_4 = log_path+"GT_log.txt";
       log_path_5 = log_path+"encoder_log.txt";
-    }
-    try{
-      state_log = fopen(log_path_1.c_str(),"w");
-      imu_log = fopen(log_path_2.c_str(),"w");
-      gps_log = fopen(log_path_3.c_str(),"w");
+  	}
+  	try{
+  		state_log = fopen(log_path_1.c_str(),"w");
+  		imu_log = fopen(log_path_2.c_str(),"w");
+  		gps_log = fopen(log_path_3.c_str(),"w");
       gt_log = fopen(log_path_4.c_str(),"w");
       encoder_log = fopen(log_path_5.c_str(),"w");
-    }catch(...){
-        cout << "\33[41mError when oppening the log files\33[0m" << endl;
-    }
+  	}catch(...){
+    		cout << "\33[41mError when oppening the log files\33[0m" << endl;
+  	}
   }
 
 
 
     // ================================ Main loop =================================
-  while (ros::ok()){
+	while (ros::ok()){
 
     // ==================================================
     // Perform a prediction step with the IMU information
@@ -369,7 +369,7 @@ int main(int argc, char *argv[]){
         // if (filter_init==true){
 
           //Call the update
-          Filter->callback_position(z_gps);
+          Filter->callback_position(z_gps.block(0,0,2,1));
 
 
         if (enable_txt_log){
@@ -397,7 +397,7 @@ int main(int argc, char *argv[]){
         // if (filter_init==true){
 
           //Call the update
-          Filter->callback_velocity(vel_encoder);
+          Filter->callback_velocity(vel_encoder.block(0,0,2,1));
 
 
         if (enable_txt_log){
@@ -412,38 +412,38 @@ int main(int argc, char *argv[]){
     }
 
 
-    // if(filter_init){
-        // ----------  ----------  ---------- ----------  ----------
-        //Publish the pose estimation of the robot
+		// if(filter_init){
+	      // ----------  ----------  ---------- ----------  ----------
+	      //Publish the pose estimation of the robot
 
-        ekf_odom.header.frame_id = "world";
-        ekf_odom.header.stamp = ros::Time::now();
-        ekf_odom.pose.pose.position.x = ekf_states(0);
-        ekf_odom.pose.pose.position.y = ekf_states(1);
-        ekf_odom.pose.pose.position.z = ekf_states(2);
-        ekf_odom.pose.pose.orientation.w = ekf_states(3);
-        ekf_odom.pose.pose.orientation.x = ekf_states(4);
-        ekf_odom.pose.pose.orientation.y = ekf_states(5);
-        ekf_odom.pose.pose.orientation.z = ekf_states(6);
+	      ekf_odom.header.frame_id = "world";
+	      ekf_odom.header.stamp = ros::Time::now();
+	      ekf_odom.pose.pose.position.x = ekf_states(0);
+	      ekf_odom.pose.pose.position.y = ekf_states(1);
+	      ekf_odom.pose.pose.position.z = ekf_states(2);
+	      ekf_odom.pose.pose.orientation.w = ekf_states(3);
+	      ekf_odom.pose.pose.orientation.x = ekf_states(4);
+	      ekf_odom.pose.pose.orientation.y = ekf_states(5);
+	      ekf_odom.pose.pose.orientation.z = ekf_states(6);
 
-        Eigen::Quaterniond quat_states(ekf_states(3),ekf_states(4),ekf_states(5),ekf_states(6));
-        R = quat_states.toRotationMatrix();
-        velo_w = R*ekf_states.block(7,0,3,1);
+	      Eigen::Quaterniond quat_states(ekf_states(3),ekf_states(4),ekf_states(5),ekf_states(6));
+	      R = quat_states.toRotationMatrix();
+	      velo_w = R*ekf_states.block(7,0,3,1);
 
-        ekf_odom.twist.twist.linear.x = velo_w(0);
-        ekf_odom.twist.twist.linear.y = velo_w(1);
-        ekf_odom.twist.twist.linear.z = velo_w(2);
+	      ekf_odom.twist.twist.linear.x = velo_w(0);
+	      ekf_odom.twist.twist.linear.y = velo_w(1);
+	      ekf_odom.twist.twist.linear.z = velo_w(2);
 
-        // ----------  ----------  ---------- ----------  ----------
+	      // ----------  ----------  ---------- ----------  ----------
 
-        //Publish a transform between the world frame and the filter estimation
-        static tf::TransformBroadcaster br;
-        tf::Transform transform;
-        transform.setOrigin( tf::Vector3(ekf_states(0), ekf_states(1), ekf_states(2)) );
-        tf::Quaternion q(ekf_states(4),ekf_states(5),ekf_states(6),ekf_states(3));
-        transform.setRotation(q);
-        br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "world", "/ekf/estimation"));
-      // }
+	      //Publish a transform between the world frame and the filter estimation
+	      static tf::TransformBroadcaster br;
+	      tf::Transform transform;
+	      transform.setOrigin( tf::Vector3(ekf_states(0), ekf_states(1), ekf_states(2)) );
+	      tf::Quaternion q(ekf_states(4),ekf_states(5),ekf_states(6),ekf_states(3));
+	      transform.setRotation(q);
+	      br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "world", "/ekf/estimation"));
+	    // }
 
 
     //Check callbacks and wait
@@ -451,17 +451,17 @@ int main(int argc, char *argv[]){
     loop_rate.sleep();
 
 
-  }//end while
+	}//end while
 
 
 
-  if(enable_txt_log){
+	if(enable_txt_log){
     //Close log files
-      fclose(state_log);
-      fclose(imu_log);
-      fclose(gps_log);
+    	fclose(state_log);
+    	fclose(imu_log);
+    	fclose(gps_log);
       fclose(encoder_log);
       fclose(gt_log);
-    }
+  	}
 
 }

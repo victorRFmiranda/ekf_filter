@@ -145,6 +145,16 @@ add_library(EKF_class
   include/EKF_class.h
 )
 
+add_executable(ekf_filter_V2 src/ekf_filter_V2.cpp
+        src/EKF_class_V2.cpp
+        include/EKF_class_V2.h)
+target_link_libraries(ekf_filter_V2 ${catkin_LIBRARIES})
+
+add_library(EKF_class_V2
+  src/EKF_class_V2.cpp
+  include/EKF_class_V2.h
+)
+
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
 ## target back to the shorter version for ease of user use
