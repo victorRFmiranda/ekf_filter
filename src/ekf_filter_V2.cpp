@@ -31,13 +31,13 @@ using namespace std;
 
 // Global variables
 #define PRINT_STATES 1
-#define N_STATES 13
+#define N_STATES 12
 bool enable_txt_log;
 Eigen::VectorXd EKF_states_0(N_STATES);
-Eigen::MatrixXd EKF_H(7,N_STATES);
+Eigen::MatrixXd EKF_H(6,N_STATES);
 Eigen::MatrixXd EKF_Q(N_STATES,N_STATES);
 Eigen::MatrixXd EKF_Q_bar(6,6);
-Eigen::MatrixXd EKF_R(7,7);
+Eigen::MatrixXd EKF_R(6,6);
 Eigen::MatrixXd EKF_P(N_STATES,N_STATES);
 
 // vehicle number
@@ -161,7 +161,7 @@ void load_EKF_parameters(ros::NodeHandle nh){
     EKF_states_0 = VectorXd::Map(temp_vector.data(), temp_vector.size());
 
     nh.getParam("/EKF/H", temp_vector);
-    EKF_H = Eigen::Map<Eigen::Matrix<double, N_STATES, 7> >(temp_vector.data()).transpose();
+    EKF_H = Eigen::Map<Eigen::Matrix<double, N_STATES, 6> >(temp_vector.data()).transpose();
 
     nh.getParam("/EKF/Q", temp_vector);
     EKF_Q = Eigen::Map<Eigen::Matrix<double, N_STATES, N_STATES> >(temp_vector.data()).transpose();
@@ -170,7 +170,7 @@ void load_EKF_parameters(ros::NodeHandle nh){
     EKF_Q_bar = Eigen::Map<Eigen::Matrix<double, 6, 6> >(temp_vector.data()).transpose();
 
     nh.getParam("/EKF/R", temp_vector);
-    EKF_R = Eigen::Map<Eigen::Matrix<double, 7, 7> >(temp_vector.data()).transpose();
+    EKF_R = Eigen::Map<Eigen::Matrix<double, 6, 6> >(temp_vector.data()).transpose();
 
     nh.getParam("/EKF/P", temp_vector);
     EKF_P = Eigen::Map<Eigen::Matrix<double, N_STATES, N_STATES> >(temp_vector.data()).transpose();
@@ -397,7 +397,7 @@ int main(int argc, char *argv[]){
         // if (filter_init==true){
 
           //Call the update
-          Filter->callback_velocity(vel_encoder.block(0,0,2,1));
+          Filter->callback_velocity(vel_encoder.block(0,0,3,1));
 
 
         if (enable_txt_log){

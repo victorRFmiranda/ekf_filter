@@ -12,7 +12,7 @@ using namespace Eigen;
 // bgx, bgy, bgz (bias imu gyro)
 // bax, bay, baz (bias imu accelerometer)
 
-#define N_STATES 13
+#define N_STATES 12
 
 // constructor 2
 EKF_class::EKF_class(VectorXd states_0, double Frequency, MatrixXd H_, MatrixXd Q_, MatrixXd Q_bar_, MatrixXd R_, MatrixXd P_){
@@ -155,7 +155,7 @@ VectorXd EKF_class::discrete_model(VectorXd x, VectorXd u, double dt){
 
   // Remove bias of imu, create new variable
   VectorXd u_imu(6);
-  u_imu = u - x.block(7,0,6,1);
+  u_imu = u - x.block(6,0,6,1);
 
 
   // Create a skew_symmetric_matrix of angular velocities
@@ -171,15 +171,11 @@ VectorXd EKF_class::discrete_model(VectorXd x, VectorXd u, double dt){
   // Orientation
   f.block(2,0,3,1) = x.block(2,0,3,1) + ( u_imu.block(0,0,3,1) )*dt;
   // Velocities
-  // VectorXd v_aux(3), colioris(3);
-  // v_aux << x(5), x(6), 0.0;
-  // colioris = S_omega*v_aux;
-
-  // f.block(5,0,2,1) = x.block(5,0,2,1) + ( u_imu.block(3,0,2,1) - colioris.block(0,0,2,1))*dt;
-  f(5) = x(5) + u_imu(3)*dt;
-  f(6) = x(6) + u_imu(4)*dt;
+  f(5) = x(5) + u_imu(4)*dt;
+  // f(5) = x(5) + u_imu(3)*dt;
+  // f(6) = x(6) + u_imu(4)*dt;
   // Bias
-  f.block(7,0,6,1) = x.block(7,0,6,1);
+  f.block(6,0,6,1) = x.block(6,0,6,1);
 
   return f;
 
@@ -307,28 +303,32 @@ void EKF_class::callback_orientation(VectorXd orient){
 void EKF_class::callback_velocity(VectorXd body_vel){
 
     // Rotation to World Frame
-    VectorXd vel_world(2);
-    vel_world = body_vel;
+    // VectorXd vel_world(3);
+    double vel_world;
+    vel_world = body_vel(0);
 
 
     //Measurement model only for velocity
-    MatrixXd H_aux(2,N_STATES);
-    H_aux = H.block(5,0,2,N_STATES);
+    MatrixXd H_aux(1,N_STATES);
+    H_aux = H.block(5,0,1,N_STATES);
 
     //Covariance of the measurement only for velocity
-    // MatrixXd R_aux(6,15);
-    MatrixXd R_aux(2,2);
-    R_aux = R.block(5,5,2,2);
+    // MatrixXd R_aux(2,2);
+    double R_aux;
+    R_aux = R(5,5);
 
 
     // Compute Inovation
-    VectorXd inovation(2);
-    inovation = vel_world - H_aux*states;
+    // VectorXd inovation(2);
+    double inovation;
+    inovation = vel_world - (H_aux*states)(0);
 
     // Compute Kalman Gain
-    MatrixXd S(2,2);
-    S = H_aux*P*H_aux.transpose() + R_aux;
-    K = P*H_aux.transpose()*S.inverse();
+    // MatrixXd S(2,2);
+    double S;
+    S = (H_aux*P*H_aux.transpose())(0);
+    S = S + R_aux;
+    K = P*H_aux.transpose()/S;
 
     // Actualization of the states
     states = states + K*inovation;
@@ -444,7 +444,8 @@ VectorXd EKF_class::get_states(){
   states_return.block(0,0,2,1) = states.block(0,0,2,1);
   states_return(2) = 0.0;
   states_return.block(3,0,4,1) = EKF_class::EulertoQuaternion(states.block(2,0,3,1));
-  states_return.block(7,0,2,1) = states.block(5,0,2,1);
+  states_return(7) = states(5);
+  states_return(8) = 0.0;
   states_return(9) = 0.0;
 
 

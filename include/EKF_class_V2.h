@@ -7,7 +7,7 @@ using namespace Eigen;
 
 class EKF_class{
   private:
-    // States (15) and IMU (6) Data
+    // States (12) and IMU (6) Data
     VectorXd states, imu_data;
     // Pose Measurement (3)
     VectorXd read_pose;
