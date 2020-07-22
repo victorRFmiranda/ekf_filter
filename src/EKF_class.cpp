@@ -1,3 +1,12 @@
+// Kalman Filter Class (Lib)
+/*
+Universidade Federal de Minas Gerais (UFMG) - 2020
+Laboraorio CORO
+Instituto Tecnologico Vale (ITV)
+Contact:
+Victor R. F. Miranda, <victormrfm@gmail.com>
+*/
+
 #include "EKF_class.h"
 
 #define PI 3.1415926535

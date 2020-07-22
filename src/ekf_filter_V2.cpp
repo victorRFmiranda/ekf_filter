@@ -1,4 +1,13 @@
 // kalman filter
+
+/*
+Universidade Federal de Minas Gerais (UFMG) - 2020
+Laboraorio CORO
+Instituto Tecnologico Vale (ITV)
+Contact:
+Victor R. F. Miranda, <victormrfm@gmail.com>
+*/
+
 // ROS stuffs
 #include "ros/ros.h"
 #include <sensor_msgs/Imu.h>
